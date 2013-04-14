@@ -1,0 +1,26 @@
+# SQL command to create the user-data table.
+# CREATE TABLE users (
+#     userid VARCHAR(128) NOT NULL,
+#     domain VARCHAR(128) NOT NULL,
+#     password VARCHAR(64) NOT NULL,
+#     home VARCHAR(255) NOT NULL,
+#     uid INTEGER NOT NULL,
+#     gid INTEGER NOT NULL
+# );
+
+driver=mysql
+
+# The mysqld.sock socket may be in different locations in different systems
+# Use "host= ... pass=foo#bar" if your password has '#' character
+connect = host=/var/run/mysqld/mysqld.sock dbname=groupware_users user=dovecot password=dovepass
+
+# Alternatively you can connect to localhost as well:
+#connect = host=localhost dbname=groupware_users user=dovecot password=dovepass
+
+password_query = SELECT userid AS username, domain, password \
+  FROM users WHERE userid = '%n' AND domain = '%d'
+
+user_query = SELECT home FROM users WHERE userid = '%n' AND domain = '%d'
+
+# For using doveadm -A:
+iterate_query = SELECT userid AS username, domain FROM users

@@ -1,0 +1,10 @@
+
+passdb {
+ driver = sql
+ args = /etc/dovecot/auth-sql.conf.ext
+}
+
+userdb {
+ driver = sql
+ args = /etc/dovecot/auth-sql.conf.ext
+}
