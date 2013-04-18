@@ -2,9 +2,9 @@
 # vi: set ft=ruby :
 
 ###
-# LDAP-specific configuration
+# Email-manager specific configuration
 ###
-node ldap_template {
+node emailmgr_template {
 
   package { 'dovecot-core': }
   package { 'dovecot-imapd': }
