@@ -6,15 +6,6 @@
 ###
 node emailmgr_template {
 
-  package { 'dovecot-core': }
-  package { 'dovecot-imapd': }
-  package { 'dovecot-postfix': }
-  package { 'dovecot-managesieved': }
-  package { 'dovecot-sieve': }
-  package { 'dovecot-antispam': }
-  package { 'dovecot-mysql': }
-
-
   ###
   # The 'vmail' user will own the data-files.
   ###
@@ -27,9 +18,38 @@ node emailmgr_template {
     shell => '/bin/false',
   }
 
+
+
   ###
   # Data-mount configuration
   ###
+
+  # Directory to store the mail. Will be a NAS mount.
+  file {'/data':
+    ensure => 'directory',
+    owner => 'root',
+    group => 'root',
+    mode => '755',
+  }
+  file {'/data/groupware':
+    ensure => 'directory',
+    owner => 'root',
+    group => 'root',
+    mode => '755',
+    require => File['/data'],
+  }
+  # Provide a /data/groupware/users directory, in case the NAS mount should fail.
+  file {'/data/groupware/users':
+    ensure => 'directory',
+    owner => 'vmail',
+    group => 'vmail',
+    mode => '755',
+    require => [
+      File['/data/groupware'],
+      User['vmail'],
+    ],
+  }
+
 
   package {'smbfs':}
 
@@ -63,8 +83,45 @@ node emailmgr_template {
     ],
   }
 
-  # Insert my user account.
-  # Add database user.
+
+
+  ###
+  # Prepare the MySQL DB to hold the virtual email users.
+  ###
+
+  # Build MySQL and populate users.
+  package {'mysql-server': }
+
+  # Create database.
+  exec {'mysql-create-dovecot-db':
+    command => "mysql -e 'CREATE DATABASE groupware_users;'",
+    require => Package['mysql-server'],
+    unless => "mysql groupware_users -e 'SELECT 1=1'",
+  }
+
+  # Add the account that postfix will use to access the DB.
+  exec { 'mysql-add-dovecot-user':
+    command => "mysql -e 'GRANT ALL ON groupware_users.* to \"dovecot\"@\"localhost\" IDENTIFIED BY \"dovepass\";'",
+    require => [
+      Package['mysql-server'],
+      Exec['mysql-create-dovecot-db'],
+    ],
+    path => ["/bin", "/usr/bin", "/usr/sbin"],
+  }
+
+  # Create the database table to store virtual users.
+  exec {'mysql-populate-dovecot-db':
+    command => "mysql groupware_users -e 'CREATE TABLE users (userid VARCHAR(128) NOT NULL, domain VARCHAR(128) NOT NULL, password VARCHAR(64) NOT NULL, home VARCHAR(255) NOT NULL);'",
+    require => [
+      Package['mysql-server'],
+      Exec['mysql-create-dovecot-db'],
+    ],
+    path => ["/bin", "/usr/bin", "/usr/sbin"],
+    unless => "mysql groupware_users -e 'SELECT COUNT(*) FROM users;'",
+  }
+
+  # Insert virtual users to the database.
+  # Add standard personal account.
   exec { 'mysql-add-dovecot-mail-user':
     command => "mysql groupware_users -e 'INSERT INTO users (userid, domain, password, home) VALUES (\"marcus\", \"\", MD5(\"password\"), \"\");'",
     path => ["/bin", "/usr/bin", "/usr/sbin"],
@@ -73,7 +130,7 @@ node emailmgr_template {
       Exec['mysql-populate-dovecot-db'],
     ],
   }
-  # Add TEST database user.
+  # Add TEST account.
   exec { 'mysql-add-dovecot-mail-user-test':
     command => "mysql groupware_users -e 'INSERT INTO users (userid, domain, password, home) VALUES (\"foo\", \"\", MD5(\"password\"), \"\");'",
     path => ["/bin", "/usr/bin", "/usr/sbin"],
@@ -84,34 +141,17 @@ node emailmgr_template {
   }
 
 
+  ###
+  # Configure dovecot.
+  ###
 
-
-  # Directory to store the mail. Will be a NAS mount.
-  file {'/data':
-    ensure => 'directory',
-    owner => 'root',
-    group => 'root',
-    mode => '755',
-  }
-  file {'/data/groupware':
-    ensure => 'directory',
-    owner => 'root',
-    group => 'root',
-    mode => '755',
-    require => File['/data'],
-  }
-  # Provide a /data/groupware/users directory, in case the NAS mount should fail.
-  file {'/data/groupware/users':
-    ensure => 'directory',
-    owner => 'vmail',
-    group => 'vmail',
-    mode => '755',
-    require => [
-      File['/data/groupware'],
-      User['vmail'],
-    ],
-  }
-
+  package { 'dovecot-core': }
+  package { 'dovecot-imapd': }
+  package { 'dovecot-postfix': }
+  package { 'dovecot-managesieved': }
+  package { 'dovecot-sieve': }
+  package { 'dovecot-antispam': }
+  package { 'dovecot-mysql': }
 
 
   # Directory to store the dovecot mail indexes, for performance.
@@ -134,6 +174,7 @@ node emailmgr_template {
       User['vmail'],
     ],
   }
+
 
   # Set the mail location in conf.d/10-mail.conf
   # As the data is stored on a remote disk, store the indexes locally.
@@ -232,36 +273,6 @@ node emailmgr_template {
   }
 
 
-  # Build MySQL and populate users.
-  package {'mysql-server': }
-
-  # Create database.
-  exec {'mysql-create-dovecot-db':
-    command => "mysql -e 'CREATE DATABASE groupware_users;'",
-    require => Package['mysql-server'],
-    unless => "mysql groupware_users -e 'SELECT 1=1'",
-  }
-
-  # Populate database.
-  exec {'mysql-populate-dovecot-db':
-    command => "mysql groupware_users -e 'CREATE TABLE users (userid VARCHAR(128) NOT NULL, domain VARCHAR(128) NOT NULL, password VARCHAR(64) NOT NULL, home VARCHAR(255) NOT NULL);'",
-    require => [
-      Package['mysql-server'],
-      Exec['mysql-create-dovecot-db'],
-    ],
-    path => ["/bin", "/usr/bin", "/usr/sbin"],
-    unless => "mysql groupware_users -e 'SELECT COUNT(*) FROM users;'",
-  }
-
-  # Add database user.
-  exec { 'mysql-add-dovecot-user':
-    command => "mysql -e 'GRANT ALL ON groupware_users.* to \"dovecot\"@\"localhost\" IDENTIFIED BY \"dovepass\";'",
-    require => [
-      Package['mysql-server'],
-      Exec['mysql-create-dovecot-db'],
-    ],
-    path => ["/bin", "/usr/bin", "/usr/sbin"],
-  }
 
 
   # Attempt to ensure Dovecot restarts at the end of the provisioning process,
@@ -278,5 +289,40 @@ node emailmgr_template {
       Line['configure_auth_add_sql_conf'],
     ],
   }
+
+
+
+
+
+
+  ###
+  # Configure postfix
+  ###
+
+
+
+
+
+  ##
+  # Configure fetchmail
+  ##
+  #
+  # package {'fetchmail':}
+  # 
+  # line {'remove_fetchmail_default_conf':
+  #   file => '/etc/default/fetchmail',
+  #   line => 'START_DAEMON=no',
+  #   ensure => 'absent',
+  #   require => Package['fetchmail'],
+  # }
+  # line {'add_fetchmail_default_conf':
+  #   file => '/etc/default/fetchmail',
+  #   line => 'START_DAEMON=yes',
+  #   ensure => 'absent',
+  #   require => Package['fetchmail'],
+  # }
+
+
+
 
 }
