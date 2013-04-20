@@ -9,13 +9,21 @@ node emailmgr_template {
   ###
   # The 'vmail' user will own the data-files.
   ###
+  group { "vmail": 
+    ensure => present,
+    gid => '99',
+    system => 'true',
+  }
   user {'vmail':
     name => 'vmail',
+    uid => '99',
+    gid => '99',
     home => '/nonexistent',
     ensure => 'present',
     comment => 'Virtual mailbox user; owns groupware home directories.',
     system => 'true',
     shell => '/bin/false',
+    require => Group['vmail'],
   }
 
 
@@ -23,6 +31,9 @@ node emailmgr_template {
   ###
   # Data-mount configuration
   ###
+
+  # The home directory for each user should be:
+  # /data/groupware/users/<username>/Maildir
 
   # Directory to store the mail. Will be a NAS mount.
   file {'/data':
@@ -152,6 +163,7 @@ node emailmgr_template {
   package { 'dovecot-sieve': }
   package { 'dovecot-antispam': }
   package { 'dovecot-mysql': }
+  package { 'postfix-mysql': }
 
 
   # Directory to store the dovecot mail indexes, for performance.
@@ -203,7 +215,7 @@ node emailmgr_template {
   ###
   # Use a preset user/group to own mail.
   ###
-  line {'configure_mail_uid':
+  line {'dovecot_configure_mail_uid':
     file => '/etc/dovecot/conf.d/10-mail.conf',
     line => 'mail_uid = vmail',
     ensure => 'present',
@@ -211,7 +223,7 @@ node emailmgr_template {
       Package['dovecot-core'],
     ],
   }
-  line {'configure_mail_gid':
+  line {'dovecot_configure_mail_gid':
     file => '/etc/dovecot/conf.d/10-mail.conf',
     line => 'mail_gid = vmail',
     ensure => 'present',
@@ -219,6 +231,15 @@ node emailmgr_template {
       Package['dovecot-core'],
     ],
   }
+  line {'dovecot_allow_mail_user':
+    file => '/etc/dovecot/conf.d/10-mail.conf',
+    line => 'first_valid_uid = 99',
+    ensure => 'present',
+    require => [ 
+      Package['dovecot-core'],
+    ],
+  }
+
 
 
   ###
@@ -299,6 +320,100 @@ node emailmgr_template {
   # Configure postfix
   ###
 
+  # The postfix package will be installed by the package dovecot-postfix.
+
+
+  # Provide the virtual-mailbox file that maps virtual users for Dovecot.
+  file {'/etc/postfix/mysql_virtual_mailbox_maps.cf':
+    source => 'puppet:///modules/configurator/etc/postfix/mysql_virtual_mailbox_maps.cf',
+    ensure => 'file',
+    owner => 'root',
+    group => 'root',
+    mode => '644',
+    require => Package['dovecot-postfix'],
+  }
+
+
+  # Instruct postfix to use virtual users.
+  line {'postfix_set_virtual_mailbox_base':
+    file => '/etc/postfix/main.cf',
+    line => 'virtual_mailbox_base = /data/groupware/users',
+    ensure => 'present',
+    require => Package['dovecot-postfix'],
+  }
+  line {'postfix_set_virtual_mailbox_maps':
+    file => '/etc/postfix/main.cf',
+    line => 'virtual_mailbox_maps = proxy:mysql:$config_directory/mysql_virtual_mailbox_maps.cf',
+    ensure => 'present',
+    require => Package['dovecot-postfix'],
+  }
+
+  # Set the user/group that owns the mailbox directories and contents.
+  line {'postfix_virtual_uid_maps':
+    file => '/etc/postfix/main.cf',
+    line => 'virtual_uid_maps = static:99',
+    ensure => 'present',
+    require => Package['dovecot-postfix'],
+  }
+  line {'postfix_set_virtual_gid_maps':
+    file => '/etc/postfix/main.cf',
+    line => 'virtual_gid_maps = static:99',
+    ensure => 'present',
+    require => Package['dovecot-postfix'],
+  }
+  line {'postfix_set_virtual_minimum_uid':
+    file => '/etc/postfix/main.cf',
+    line => 'virtual_minimum_uid = 99',
+    ensure => 'present',
+    require => Package['dovecot-postfix'],
+  }
+
+
+  # Configure the virtual domain maps.
+  line {'postfix_remove_mydestination':
+    file => '/etc/postfix/main.cf',
+    line => 'mydestination = vm-mailbox, localhost.localdomain, , localhost',
+    ensure => 'absent',
+    require => Package['dovecot-postfix'],
+  }
+  line {'postfix_set_mydestination':
+    file => '/etc/postfix/main.cf',
+    line => 'mydestination =',
+    ensure => 'present',
+    require => Package['dovecot-postfix'],
+  }
+  line {'postfix_set_virtual_mailbox_domains':
+    file => '/etc/postfix/main.cf',
+    line => 'virtual_mailbox_domains = vm-mailbox, localhost.localdomain, , localhost',
+    ensure => 'present',
+    require => Package['dovecot-postfix'],
+  }
+  line {'postfix_set_local_recipient_maps':
+    file => '/etc/postfix/main.cf',
+    line => 'local_recipient_maps = ',
+    ensure => 'present',
+    require => Package['dovecot-postfix'],
+  }
+  
+  
+
+
+  # 
+  # 
+  # 
+
+
+  # Configure postfix to deliver to dovecot.
+  # ==========================================================================
+  # service type  private unpriv  chroot  wakeup  maxproc command + args
+  #               (yes)   (yes)   (yes)   (never) (100)
+  # ==========================================================================
+  line {'postfix_configure_dovecot_delivery':
+    file => '/etc/postfix/master.cf',
+    line => 'dovecot  unix  - n n - - pipe  flags=DRhu  user=vmail:vmail  argv=/usr/lib/dovecot/deliver -d $(recipient)',
+    ensure => 'present',
+    require => Package['dovecot-postfix'],
+  }
 
 
 
@@ -306,23 +421,43 @@ node emailmgr_template {
   ##
   # Configure fetchmail
   ##
-  #
-  # package {'fetchmail':}
-  # 
-  # line {'remove_fetchmail_default_conf':
-  #   file => '/etc/default/fetchmail',
-  #   line => 'START_DAEMON=no',
-  #   ensure => 'absent',
-  #   require => Package['fetchmail'],
-  # }
-  # line {'add_fetchmail_default_conf':
-  #   file => '/etc/default/fetchmail',
-  #   line => 'START_DAEMON=yes',
-  #   ensure => 'absent',
-  #   require => Package['fetchmail'],
-  # }
+
+  package {'fetchmail':}
+
+  line {'remove_fetchmail_default_conf':
+    file => '/etc/default/fetchmail',
+    line => 'START_DAEMON=no',
+    ensure => 'absent',
+    require => Package['fetchmail'],
+  }
+  line {'add_fetchmail_default_conf':
+    file => '/etc/default/fetchmail',
+    line => 'START_DAEMON=yes',
+    ensure => 'present',
+    require => Package['fetchmail'],
+  }
+  file {'/etc/fetchmailrc':
+    source => 'puppet:///modules/configurator/etc/fetchmailrc',
+    ensure => 'file',
+    owner => 'root',
+    group => 'root',
+    mode => '600',
+    require => Package['fetchmail'],
+  }
 
 
 
+
+  ##
+  # Allow read-access to the mail logs.
+  ##
+  file {'/var/log/mail.err':
+    mode => '644',
+    require => Package['dovecot-core'],
+  }
+  file {'/var/log/mail.log':
+    mode => '644',
+    require => Package['dovecot-core'],
+  }
 
 }

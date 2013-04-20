@@ -1,0 +1,24 @@
+hosts = localhost
+user = dovecot
+password = dovepass
+dbname = groupware_users
+
+
+# Query:
+# Provide the file-system path to the virtual user's mail directory.
+# This is relative to Postfix's $virtual_mailbox_base
+
+###
+# QUERY LOOKUP: POSTFIX 2.2 AND GREATER
+###
+query = SELECT CONCAT(userid, '/' , 'Maildir', '/') FROM users WHERE userid='%u'
+# query = SELECT CONCAT(userid, '/' , 'Maildir', '/') FROM users WHERE userid='%s'
+
+
+###
+# DEPRECATED FORMAT
+###
+
+# select_field = CONCAT(userid, '/', 'Maildir', '/')
+# table = users
+# where_field = userid
