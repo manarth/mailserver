@@ -334,18 +334,24 @@ node emailmgr_template {
   }
 
 
+  # Reference the main config file, in order to control dependencies
+  file {'/etc/postfix/main.cf':
+    ensure => 'present',
+    require => Package['dovecot-postfix'],
+  }
+
   # Instruct postfix to use virtual users.
   line {'postfix_set_virtual_mailbox_base':
     file => '/etc/postfix/main.cf',
     line => 'virtual_mailbox_base = /data/groupware/users',
     ensure => 'present',
-    require => Package['dovecot-postfix'],
+    require => Line['postfix_remove_mydestination'],
   }
   line {'postfix_set_virtual_mailbox_maps':
     file => '/etc/postfix/main.cf',
     line => 'virtual_mailbox_maps = proxy:mysql:$config_directory/mysql_virtual_mailbox_maps.cf',
     ensure => 'present',
-    require => Package['dovecot-postfix'],
+    require => Line['postfix_remove_mydestination'],
   }
 
   # Set the user/group that owns the mailbox directories and contents.
@@ -353,19 +359,19 @@ node emailmgr_template {
     file => '/etc/postfix/main.cf',
     line => 'virtual_uid_maps = static:99',
     ensure => 'present',
-    require => Package['dovecot-postfix'],
+    require => Line['postfix_remove_mydestination'],
   }
   line {'postfix_set_virtual_gid_maps':
     file => '/etc/postfix/main.cf',
     line => 'virtual_gid_maps = static:99',
     ensure => 'present',
-    require => Package['dovecot-postfix'],
+    require => Line['postfix_remove_mydestination'],
   }
   line {'postfix_set_virtual_minimum_uid':
     file => '/etc/postfix/main.cf',
     line => 'virtual_minimum_uid = 99',
     ensure => 'present',
-    require => Package['dovecot-postfix'],
+    require => Line['postfix_remove_mydestination'],
   }
 
 
@@ -374,25 +380,25 @@ node emailmgr_template {
     file => '/etc/postfix/main.cf',
     line => 'mydestination = vm-mailbox, localhost.localdomain, , localhost',
     ensure => 'absent',
-    require => Package['dovecot-postfix'],
+    require => File['/etc/postfix/main.cf'],
   }
   line {'postfix_set_mydestination':
     file => '/etc/postfix/main.cf',
     line => 'mydestination =',
     ensure => 'present',
-    require => Package['dovecot-postfix'],
+    require => Line['postfix_remove_mydestination'],
   }
   line {'postfix_set_virtual_mailbox_domains':
     file => '/etc/postfix/main.cf',
     line => 'virtual_mailbox_domains = vm-mailbox, localhost.localdomain, , localhost',
     ensure => 'present',
-    require => Package['dovecot-postfix'],
+    require => Line['postfix_remove_mydestination'],
   }
   line {'postfix_set_local_recipient_maps':
     file => '/etc/postfix/main.cf',
     line => 'local_recipient_maps = ',
     ensure => 'present',
-    require => Package['dovecot-postfix'],
+    require => Line['postfix_remove_mydestination'],
   }
   
   
