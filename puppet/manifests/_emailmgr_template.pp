@@ -11,13 +11,13 @@ node emailmgr_template {
   ###
   group { "vmail": 
     ensure => present,
-    gid => '99',
+    gid => '503',
     system => 'true',
   }
   user {'vmail':
     name => 'vmail',
-    uid => '99',
-    gid => '99',
+    uid => '503',
+    gid => '503',
     home => '/nonexistent',
     ensure => 'present',
     comment => 'Virtual mailbox user; owns groupware home directories.',
@@ -62,8 +62,6 @@ node emailmgr_template {
   }
 
 
-  package {'smbfs':}
-
   file {'/mnt/nasalot_groupware':
     ensure => 'directory',
     owner => 'vmail',
@@ -74,13 +72,12 @@ node emailmgr_template {
 
   mount {'nasalot':
     ensure => 'mounted',
-    fstype => 'smbfs',
+    fstype => 'nfs',
     name => '/mnt/nasalot_groupware',
-    device => '//192.168.0.194/groupware',
-    options => 'user=r_dovecot,password=dovepass,uid=vmail,gid=vmail',
+    device => '192.168.0.194:/share/MD0_DATA/groupware/',
+    options => 'rw,hard,intr',
     require => [
       File['/mnt/nasalot_groupware'],
-      Package['smbfs'],
       User['vmail'],
     ],
   }
@@ -225,7 +222,7 @@ node emailmgr_template {
   }
   line {'dovecot_configure_mail_gid':
     file => '/etc/dovecot/conf.d/10-mail.conf',
-    line => 'mail_gid = vmail',
+    line => 'mail_gid = nogroup',
     ensure => 'present',
     require => [ 
       Package['dovecot-core'],
@@ -240,6 +237,44 @@ node emailmgr_template {
     ],
   }
 
+  #
+  # NFS mount controls.
+  #
+  line {'dovecot_set_mmap_disable':
+    file => '/etc/dovecot/conf.d/10-mail.conf',
+    line => 'mmap_disable = no',
+    ensure => 'present',
+    require => Package['dovecot-core'],
+  }
+  line {'dovecot_set_dotlock_use_excl':
+    file => '/etc/dovecot/conf.d/10-mail.conf',
+    line => 'dotlock_use_excl = no',
+    ensure => 'present',
+    require => Package['dovecot-core'],
+  }
+  line {'dovecot_set_mail_fsync':
+    file => '/etc/dovecot/conf.d/10-mail.conf',
+    line => 'mail_fsync = always',
+    ensure => 'present',
+    require => Package['dovecot-core'],
+  }
+  line {'dovecot_set_mail_nfs_storage':
+    file => '/etc/dovecot/conf.d/10-mail.conf',
+    line => 'mail_nfs_storage = yes',
+    ensure => 'present',
+    require => Package['dovecot-core'],
+  }
+  line {'dovecot_set_mail_nfs_index':
+    file => '/etc/dovecot/conf.d/10-mail.conf',
+    line => 'mail_nfs_index = no',
+    ensure => 'present',
+    require => Package['dovecot-core'],
+  }
+  
+  
+  
+  
+  
 
 
   ###
@@ -357,13 +392,13 @@ node emailmgr_template {
   # Set the user/group that owns the mailbox directories and contents.
   line {'postfix_virtual_uid_maps':
     file => '/etc/postfix/main.cf',
-    line => 'virtual_uid_maps = static:99',
+    line => 'virtual_uid_maps = static:503',
     ensure => 'present',
     require => Line['postfix_remove_mydestination'],
   }
   line {'postfix_set_virtual_gid_maps':
     file => '/etc/postfix/main.cf',
-    line => 'virtual_gid_maps = static:99',
+    line => 'virtual_gid_maps = static:65534',
     ensure => 'present',
     require => Line['postfix_remove_mydestination'],
   }
