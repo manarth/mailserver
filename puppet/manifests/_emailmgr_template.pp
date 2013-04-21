@@ -446,8 +446,15 @@ node emailmgr_template {
     ensure => 'present',
     require => Line['postfix_remove_mydestination'],
   }
-  
-  
+
+  # Remove 10MB limit on message size.
+  line {'postfix_set_message_size_limit':
+    file => '/etc/postfix/main.cf',
+    line => 'message_size_limit = 0',
+    ensure => 'present',
+    require => Line['postfix_remove_mydestination'],
+  }
+
 
 
   # 
