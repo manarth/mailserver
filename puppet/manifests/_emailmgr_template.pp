@@ -35,6 +35,8 @@ node emailmgr_template {
   # The home directory for each user should be:
   # /data/groupware/users/<username>/Maildir
 
+  package {'nfs-common': }
+
   # Directory to store the mail. Will be a NAS mount.
   file {'/data':
     ensure => 'directory',
@@ -79,6 +81,7 @@ node emailmgr_template {
     require => [
       File['/mnt/nasalot_groupware'],
       User['vmail'],
+      Package['nfs-common'],
     ],
   }
 
@@ -189,7 +192,15 @@ node emailmgr_template {
   # As the data is stored on a remote disk, store the indexes locally.
   line {'configure_mail_location':
     file => '/etc/dovecot/conf.d/10-mail.conf',
-    line => 'mail_location = maildir:/data/groupware/users/%n/Maildir:INDEX=/var/dovecot/indexes/%u',
+    # Main mail store:    /data/groupware/users/%n/Maildir
+    # Control files:      /data/groupware/users/%n/Maildir/.DOVECOT_CONTROL_METADATA
+    #                     dovecot-uidlist and dovecot-keywords files.
+    # Mail files:         <maildirectory>/dovecot_mail_data
+    #                     cur/new/tmp subdirectories, for each mail directory.
+    # Dovecot indexes:    /var/dovecot/indexes/%n
+    #                     dovecot.index, dovecot.index.cache and dovecot.index.log files.
+    # line => 'mail_location = maildir:/data/groupware/users/%n/Maildir:INDEX=/var/dovecot/indexes/%n:CONTROL=/data/groupware/users/%n/Maildir/.DOVECOT_CONTROL_METADATA:DIRNAME=imap_maildir_mails',
+    line => 'mail_location = maildir:/data/groupware/users/%n/Maildir:INDEX=/var/dovecot/indexes/%n:CONTROL=/data/groupware/users/%n/Maildir/.DOVECOT_CONTROL_METADATA',
     ensure => 'present',
     require => [
       Package['dovecot-core'],
