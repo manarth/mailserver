@@ -86,13 +86,17 @@ node emailmgr_template {
   }
 
   # Bind /mnt/nasalot_groupware to /data/groupware
-  exec { 'bind-testdata':
-    command => 'mount --bind /mnt/nasalot_groupware /data/groupware',
+  mount {'/data/groupware':
+    name => '/data/groupware',
+    device => '/mnt/nasalot_groupware',
+    fstype => 'none',
+    options => 'rw,bind',
     require => [
       Mount['nasalot'],
       File['/data/groupware/users'],
     ],
   }
+
 
 
 
@@ -451,6 +455,12 @@ node emailmgr_template {
   line {'postfix_set_message_size_limit':
     file => '/etc/postfix/main.cf',
     line => 'message_size_limit = 0',
+    ensure => 'present',
+    require => Line['postfix_remove_mydestination'],
+  }
+  line {'postfix_set_virtual_mailbox_limit':
+    file => '/etc/postfix/main.cf',
+    line => 'virtual_mailbox_limit = 0',
     ensure => 'present',
     require => Line['postfix_remove_mydestination'],
   }
